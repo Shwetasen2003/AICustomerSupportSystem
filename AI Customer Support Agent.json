@@ -1,0 +1,422 @@
+{
+  "name": "AI Customer Support Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "7c367e18-22f7-44c3-9f62-7404ed42a3b7",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1392,
+        -592
+      ],
+      "id": "45ce2033-bdcd-4c34-bd28-95a17d06f1cc",
+      "name": "Webhook",
+      "webhookId": "7c367e18-22f7-44c3-9f62-7404ed42a3b7"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=={{ \"Customer Code: \" + $json.body.customer_code + \"\\nOrder ID: \" + $json.body.order_id + \"\\nName: \" + $json.body.name + \"\\nMessage: \" + $json.body.message + \"\\n\\nInstructions:\\nYou are a helpful AI Customer Support Agent. Your job is to process user requests, check database tables, and log complaints when necessary.\\n\\nFollow these strict rules based on the user's input and intent:\\n\\n1. UNDERSTAND THE INPUT:\\n   - Extract the user's `message`, `customer_code`, `order_id`, and `name` from the incoming request.\\n\\n2. IF THE USER IS ASKING ABOUT ORDER STATUS:\\n   - Query the `Customer Table` and `Orders Table` using the provided `customer_code` and `order_id`.\\n   - Retrieve the current order status and details.\\n   - Reply to the user with a clear summary of their order status and tracking details.\\n\\n3. IF THE USER IS RAISING A COMPLAINT / ISSUE:\\n   - Step 1: Query the `Support_Ticket Table` to check if a complaint already exists for this `order_id` or `customer_code`.\\n   - Step 2: \\n     * IF A COMPLAINT ALREADY EXISTS: Reply to the user with the status of their existing support ticket/complaint based on the `Support_Ticket Table` data.\\n     * IF NO COMPLAINT EXISTS: Call the `Complaint log` tool (Google Sheets) to record the new complaint with fields: `customer_code`, `order_id`, `name`, and `message`. Once successfully logged, reply to the user: \\\"We have received your complaint regarding order [order_id] and our team is actively working on it.\\\"\" }}",
+        "options": {
+          "systemMessage": ""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -784,
+        -592
+      ],
+      "id": "dcf7ac2d-107e-4c1c-a1da-711b15a44e0b",
+      "name": "AI Agent",
+      "executeOnce": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 100
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ \"Hello \" + $('Webhook').item.json.body.name + \",\\n\" + $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -80,
+        -592
+      ],
+      "id": "29629474-7310-407f-9bce-ee07c4dd900b",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.customer_code }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.4,
+      "position": [
+        -992,
+        -272
+      ],
+      "id": "727ebe96-c11d-44dc-81a2-cfd997f7b65c",
+      "name": "Chat Memory",
+      "retryOnFail": false,
+      "maxTries": 3,
+      "credentials": {
+        "postgres": {
+          "id": "oBOuDnCjKFZyZQAh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Select rows from a table in Postgres",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "customers",
+          "mode": "list",
+          "cachedResultName": "customers"
+        },
+        "sort": {
+          "values": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.7,
+      "position": [
+        -832,
+        -160
+      ],
+      "id": "647bf3aa-cdd6-45d8-aa74-274ea2a97214",
+      "name": "Customer Table",
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "oBOuDnCjKFZyZQAh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "orders",
+          "mode": "list",
+          "cachedResultName": "orders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.7,
+      "position": [
+        -640,
+        -160
+      ],
+      "id": "f426e5b6-e3a0-48c4-bb61-56b7cf9ce78e",
+      "name": "Orders Table",
+      "credentials": {
+        "postgres": {
+          "id": "oBOuDnCjKFZyZQAh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to look up existing support tickets, update ticket statuses, or log new support tickets for customer complaints and inquiries.",
+        "operation": "executeQuery",
+        "query": "SELECT \n    id,\n    ticket_id,\n    customer_code,\n    subject,\n    description,\n    status,\n    priority\nFROM support_tickets\nWHERE customer_code = $1 \n   OR ticket_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.body.customer_code }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.7,
+      "position": [
+        -448,
+        -160
+      ],
+      "id": "a7e8c0e2-64b2-471f-943c-a1f574325b36",
+      "name": "Support_Ticket Table",
+      "credentials": {
+        "postgres": {
+          "id": "oBOuDnCjKFZyZQAh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1lwCTjr4cl-oL8Fr3XT7dwqkvckZb4VqWSLpafIL0PHQ",
+          "mode": "list",
+          "cachedResultName": "Complaint Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwCTjr4cl-oL8Fr3XT7dwqkvckZb4VqWSLpafIL0PHQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwCTjr4cl-oL8Fr3XT7dwqkvckZb4VqWSLpafIL0PHQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Customer_code": "={{ $json.body.customer_code }}",
+            "Order_id": "={{ $json.body.order_id }}",
+            "Name": "={{ $json.body.name }}",
+            "Complaint": "={{ $json.body.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Customer_code",
+              "displayName": "Customer_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Order_id",
+              "displayName": "Order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Complaint",
+              "displayName": "Complaint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -288,
+        -288
+      ],
+      "id": "86bf4f05-d092-486f-a69c-618883e220c0",
+      "name": "Complaint log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "P4rv1bWse0YZ8CsX",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1424,
+        112
+      ],
+      "id": "e87a6d2b-1833-4cc0-ac1a-38103ba15b4f",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n  {\n    \"status\": \"error\",\n    \"message\": \"An unexpected error occurred while processing your request.\",\n    \"failed_node\": $json.execution.error.node.name,\n    \"error_details\": $json.execution.error.message\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -96,
+        112
+      ],
+      "id": "6a540b2d-c57b-478f-8602-cf23e0870e28",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        -1168,
+        -288
+      ],
+      "id": "7e2f1f08-0bf8-414a-b988-ec849a15607e",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "eXqzWmBCc9fW6siM",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Table": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orders Table": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Support_Ticket Table": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complaint log": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "70d986bb-5f12-4ea9-abac-d2440b2c16d3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ebc8e81dd53294822d07c472def6aecca92163d401ae5a3f9e1751cc94bd3b18"
+  },
+  "nodeGroups": [],
+  "id": "NJKW90WfqLV07ewh",
+  "tags": []
+}
